@@ -1,37 +1,27 @@
-/**
- * 
- */
 package org.exparity.hamcrest.bean.sample.dao;
 
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
+import org.hibernate.*;
 
-/**
- * @author Stewart
- *
- */
 public class UserDAOHibernateImpl implements UserDAO {
 
 	private final SessionFactory factory;
 
-	public UserDAOHibernateImpl() {
+	public UserDAOHibernateImpl(final String resourceFile) {
 		this.factory = new Configuration()
 				.addAnnotatedClass(User.class)
 					.addAnnotatedClass(UserComment.class)
 					.buildSessionFactory(
-							new StandardServiceRegistryBuilder().loadProperties("hibernate.properties").build());
+							new StandardServiceRegistryBuilder().loadProperties(resourceFile).build());
 
 	}
 
 	@Override
 	public User save(final User user) {
-		Session session = factory.getCurrentSession();
-		Transaction txn = session.beginTransaction();
+		Transaction txn = factory.getCurrentSession().beginTransaction();
 		try {
-			session.save(user);
+			factory.getCurrentSession().save(user);
 			txn.commit();
 		} catch (final Exception e) {
 			txn.rollback();
@@ -41,10 +31,9 @@ public class UserDAOHibernateImpl implements UserDAO {
 
 	@Override
 	public User getUserById(Long userId) {
-		Session session = factory.getCurrentSession();
-		Transaction txn = session.beginTransaction();
+		Transaction txn = factory.getCurrentSession().beginTransaction();
 		try {
-			return (User) session.get(User.class, userId);
+			return (User) factory.getCurrentSession().get(User.class, userId);
 		} finally {
 			txn.rollback();
 		}
