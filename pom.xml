@@ -37,7 +37,7 @@
 		<dependency>
 			<groupId>org.exparity</groupId>
 			<artifactId>hamcrest-bean</artifactId>
-			<version>1.0.10-SNAPSHOT</version>
+			<version>1.0.10</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
