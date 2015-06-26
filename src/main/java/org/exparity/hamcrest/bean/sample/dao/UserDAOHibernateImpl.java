@@ -19,9 +19,10 @@ public class UserDAOHibernateImpl implements UserDAO {
 
 	@Override
 	public User save(final User user) {
-		Transaction txn = factory.getCurrentSession().beginTransaction();
+		Session session = factory.getCurrentSession();
+		Transaction txn = session.beginTransaction();
 		try {
-			factory.getCurrentSession().save(user);
+			session.save(user);
 			txn.commit();
 		} catch (final Exception e) {
 			txn.rollback();
@@ -31,9 +32,10 @@ public class UserDAOHibernateImpl implements UserDAO {
 
 	@Override
 	public User getUserById(Long userId) {
-		Transaction txn = factory.getCurrentSession().beginTransaction();
+		Session session = factory.getCurrentSession();
+		Transaction txn = session.beginTransaction();
 		try {
-			return (User) factory.getCurrentSession().get(User.class, userId);
+			return (User) session.get(User.class, userId);
 		} finally {
 			txn.rollback();
 		}

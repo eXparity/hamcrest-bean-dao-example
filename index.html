@@ -1,0 +1,338 @@
+<html>
+<body>
+  <h1>Persistence and DAO testing made simple (with exparity-stub and hamcrest-bean)</h1>
+  <p>
+    Persistence of model objects is a part of many Java projects and a part which deserves, and often gets, high test coverage as one of the key layer
+    integration points in the code. However, I've often felt the testing paradigms for this can be cumbersome, often involving a large amount of setup
+    with an equivalent amount of validation. This can be tedious to both create and maintain. As a solution to this I've been testing persistence with
+    a different pattern; by combining both the
+    <a href="https://github.com/eXparity/exparity-stub">exparity-stub</a>
+    and the
+    <a href="https://github.com/eXparity/hamcrest-bean">hamcrest-bean</a>
+    library you can thoroughly test model persistence in a few lines of test code as per the snippet below;
+  </p>
+  <pre class="brush:java">
+..
+User user = aRandomInstanceOf(User.class);
+User saved = dao.save(user);
+assertThat(dao.getUserById(saved.getId()), theSameBeanAs(saved));
+..
+</pre>
+  <p>The test snippet above is small but in those few lines will thoroughly test that all fields in a graph can be persisted and retrieved without
+    loss, that any JPA or other mapping is valid, and that your queries are valid. For a complete example we'll work through testing a simple DAO for
+    storing and retrieving User objects using the in-memory H2 database for simplicity. The same example will work for any persistence mechanism.
+    Before we get started with an example lets briefly outline what the libraries are and what they do.</p>
+
+  <h3>The exparity-stub library</h3>
+  <p>The exparity-stub libraries provides a set of static methods for creating stubs of model objects, object graphs, collections, types, and
+    primitive types. For our example we'll be creating random stubs because we want to completely fill the graph with junk data and check it can be
+    written down. exparity-stub offers two approaches to this, the RandomBuilder or the BeanBuilder. The RandomBuilder provides a terser notation to
+    create random objects with less code. For example:</p>
+  <pre>
+User user = RandomBuilder.aRandomInstanceOf(User.class);
+List&lt;User&gt; users = RandomBuilder.aRandomListOf(User.class);
+String anyString = RandomBuilder.aRandomString();
+  </pre>
+  <p>Whereas the BeanBuilder provides a fluent interface with finer control for building individual objects and graphs, for example;</p>
+  <pre>
+User user = BeanBuilder.aRandomInstanceOf(User.class).excludeProperty("Id").build();
+</pre>
+  <p>
+    For this example i'm going to use the BeanBuilder so I can exclude the <em>User.Id</em> property from being populated by the random builder.
+  </p>
+  <h3>The hamcrest-bean library</h3>
+  <p>
+    The hamcrest-bean library is an extension library to the
+    <a href="http://github.com/hamcrest/JavaHamcrest">Java Hamcrest</a>
+    library. The hamcrest-bean library provides a set of matchers specifically for testing Java objects and object graphs and performs deep
+    inspections of those objects. It supports exclusions and overrides to allow fine control, if required, of how matching of any property, path, or
+    type is handled, for example:
+  </p>
+  <pre>
+User expected = new User("Jane", "Doe");
+assertThat(new User("John", "Doe"), BeanMatchers.theSameAs(expected).excludeProperty("FirstName"));
+</pre>
+
+  <h2>A sample project</h2>
+  <p>The sample project I'll work through is persistence of a simple User object with a child list of UserComment objects. This simple graph will
+    be persisted to a H2 database with hibernate handling the Object-Relational Mapping (ORM) mapping, and Java Persistence Annotation (JPA) used to
+    mark-up the model.</p>
+  <h3>The Model</h3>
+  <p>Below are the two model classes; first the User class.</p>
+  <pre class="brush:java">
+package org.exparity.hamcrest.bean.sample.dao;
+
+import java.util.*;
+import javax.persistence.*;
+
+@Entity
+@Table
+public class User {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.SEQUENCE)
+	private Long id;
+	private Date createTs;
+	private String username, firstName, surname;
+	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+	private List<UserComment> comments = new ArrayList<>();
+
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public Date getCreateTs() {
+		return createTs;
+	}
+
+	public void setCreateTs(Date createTs) {
+		this.createTs = createTs;
+	}
+
+	public String getUsername() {
+		return username;
+	}
+
+	public void setUsername(String username) {
+		this.username = username;
+	}
+
+	public String getFirstName() {
+		return firstName;
+	}
+
+	public void setFirstName(String firstName) {
+		this.firstName = firstName;
+	}
+
+	public String getSurname() {
+		return surname;
+	}
+
+	public void setSurname(String surname) {
+		this.surname = surname;
+	}
+
+	public List<UserComment> getComments() {
+		return comments;
+	}
+
+	public void setComments(List<UserComment> comments) {
+		this.comments = comments;
+	}
+}
+
+  
+  </pre>
+  <p>Followed by the UserComment class.</p>
+  <pre class="brush:java">
+package org.exparity.hamcrest.bean.sample.dao;
+
+import java.util.Date;
+
+import javax.persistence.*;
+
+@Table
+@Entity
+public class UserComment {
+
+	private Long id;
+	private Date timestamp;
+	private String text;
+	private String title;
+
+	public Date getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(Date timestamp) {
+		this.timestamp = timestamp;
+	}
+
+	public String getText() {
+		return text;
+	}
+
+	public void setText(String text) {
+		this.text = text;
+	}
+
+	public String getTitle() {
+		return title;
+	}
+
+	public void setTitle(String title) {
+		this.title = title;
+	}
+}
+</pre>
+  <h3>The Data Access Object (DAO)</h3>
+  <p>
+    Next up we write our DAO layer. I've excluded the UserDAO interface from this post but it is available in the sample project on
+    <a href="https://github.com/exparity/hamcrest-bean-dao-example">github</a>
+    .The full, if somewhat crude, implementation of the UserDAO is below.
+  </p>
+  <pre class="brush:java">
+package org.exparity.hamcrest.bean.sample.dao;
+
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cfg.Configuration;
+import org.hibernate.*;
+
+public class UserDAOHibernateImpl implements UserDAO {
+
+	private final SessionFactory factory;
+
+	public UserDAOHibernateImpl(final String resourceFile) {
+		this.factory = new Configuration()
+                .addAnnotatedClass(User.class)
+                .addAnnotatedClass(UserComment.class)
+                .buildSessionFactory(
+                  new StandardServiceRegistryBuilder()
+                    .loadProperties(resourceFile)
+                    .build());
+	}
+
+	@Override
+	public User save(final User user) {
+		Session session = factory.getCurrentSession();        
+		Transaction txn = session.beginTransaction();
+		try {
+			session.save(user);
+			txn.commit();
+		} catch (final Exception e) {
+			txn.rollback();
+		}
+		return user;
+	}
+
+	@Override
+	public User getUserById(Long userId) {
+		Session session = factory.getCurrentSession();        
+		Transaction txn = session.beginTransaction();
+		try {
+			return (User) session.get(User.class, userId);
+		} finally {
+			txn.rollback();
+		}
+	}
+}
+</pre>
+  <h3>Integration Test</h3>
+  <p>And finally, onto our integration test. The hibernate.properties will create an instance of an in-memory database and create the necessary
+    tables on instantiation of the DAO.</p>
+  <pre class="brush:java">
+hibernate.dialect=org.hibernate.dialect.H2Dialect
+hibernate.connection.username=sa
+hibernate.connection.password=
+hibernate.connection.driver_class=org.h2.Driver
+hibernate.connection.url=jdbc:h2:mem:test
+hibernate.current_session_context_class=thread
+hibernate.cache.provider_class=org.hibernate.cache.internal.NoCacheProvider
+hibernate.show_sql=true
+hibernate.hbm2ddl.auto=update
+</pre>
+  <p>The integration test is below.</p>
+  <pre class="brush:java">
+package org.exparity.hamcrest.bean.sample.dao;
+
+import static org.exparity.hamcrest.BeanMatchers.theSameBeanAs;
+import static org.exparity.stub.bean.BeanBuilder.aRandomInstanceOf;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
+
+import org.junit.Test;
+
+public class UserDAOHibernateImplTest {
+
+	@Test
+	public void canSaveAUser() {
+		User user = aRandomInstanceOf(User.class).excludeProperty("Id").build();
+		UserDAOHibernateImpl dao = new UserDAOHibernateImpl("hibernate.properties");
+		User saved = dao.save(user);
+		User loaded = dao.getUserById(saved.getId());
+		assertThat(loaded, not(sameInstance(user)));
+		assertThat(loaded, theSameBeanAs(user));
+	}
+}
+</pre>
+  <p>Let's break the test down step by step to see what each step is doing and why the test is put together this way.</p>
+  <strong>1) Model Setup</strong>
+  <pre class="brush:java">
+User user = aRandomInstanceOf(User.class).excludeProperty("Id").build();
+</pre>
+  <p>Create a random instance of the User class and it's associates using exparity-stub. The instance will be populated with random data with the
+    exception of the Id property. I've excluded the Id property so that is left null to test that the id is being generated in the database.</p>
+  <strong>2) DAO Setup</strong>
+  <pre class="brush:java">
+UserDAOHibernateImpl dao = new UserDAOHibernateImpl("hibernate.properties")
+</pre>
+  <p>Instantiate the DAO ready to be tested, passing in the property file to use for the test. The hibernate properties used will configure an
+    in-memory instance of H2 and create the schema automatically.</p>
+  <strong>2) Exercise the DAO</strong>
+  <pre class="brush:java">
+User saved = dao.save(user);
+User loaded = dao.getUserById(saved.getId());
+</pre>
+  <p>Save the random instance of the model set up in step (1) and then query the object back out again.</p>
+  <strong>4) Verify the results</strong>
+  <pre class="brush:java">
+assertThat(loaded, not(sameInstance(user)));
+assertThat(loaded, theSameBeanAs(user));
+</pre>
+  <p>The first line verifies that the loaded User instance is not the same instance as the originally saved User. This prevents false positive
+    results when the loaded instance is returned directly from a cache. The second line uses hamcrest-bean to perform a deep comparison of the loaded
+    User instance against the original user instance.</p>
+  <h3>Running the test</h3>
+  <p>The first run of the test yields an error; specifically a hibernate warning because a @Id annotation has been missed on UserComment.
+  <p>
+  <pre class="brush:java">
+org.hibernate.AnnotationException: No identifier specified for entity: org.exparity.hamcrest.bean.sample.dao.UserComment
+	at org.hibernate.cfg.InheritanceState.determineDefaultAccessType(InheritanceState.java:277)
+	at org.hibernate.cfg.InheritanceState.getElementsToProcess(InheritanceState.java:224)
+	at org.hibernate.cfg.AnnotationBinder.bindClass(AnnotationBinder.java:775)
+	at org.hibernate.cfg.Configuration$MetadataSourceQueue.processAnnotatedClassesQueue(Configuration.java:3845)
+	at org.hibernate.cfg.Configuration$MetadataSourceQueue.processMetadata(Configuration.java:3799)
+	at org.hibernate.cfg.Configuration.secondPassCompile(Configuration.java:1412)
+	at org.hibernate.cfg.Configuration.buildSessionFactory(Configuration.java:1846)
+	at org.exparity.hamcrest.bean.sample.dao.UserDAOHibernateImpl.<init>(UserDAOHibernateImpl.java:15)
+	at org.exparity.hamcrest.bean.sample.dao.UserDAOHibernateImplTest.canSaveAUser(UserDAOHibernateImplTest.java:18)
+	...
+  </pre>
+  <p>A fix to the UserComment object and we can run the test again.</p>
+  <pre class="brush:java">
+@Table
+@Entity
+public class UserComment {
+
+	<strong>@Id</strong>
+	<strong>@GeneratedValue(strategy = GenerationType.SEQUENCE)</strong>
+	private Long id;
+	private Date timestamp;
+	private String text;
+	private String title;
+	...
+</pre>
+  <p>After running the test again it all passes.
+  <p>
+  <h2>Try it out</h2>
+  <p>To try hamcrest-bean and exparity-stub out for yourself include the dependency in your maven pom or other dependency manager</p>
+  <pre class="brush:xml">&nbsp; &nbsp; &lt;dependency&gt;
+&nbsp; &nbsp; &nbsp; &lt;groupId&gt;org.exparity&lt;/groupId&gt;
+&nbsp; &nbsp; &nbsp; &lt;artifactId&gt;hamcrest-bean&lt;/artifactId&gt;
+&nbsp; &nbsp; &nbsp; &lt;version&gt;1.0.10&lt;/version&gt;
+&nbsp; &nbsp; &nbsp; &lt;scope&gt;test&lt;/scope&gt;
+&nbsp; &nbsp; &lt;/dependency&gt;
+&nbsp; &nbsp; &lt;dependency&gt;
+&nbsp; &nbsp; &nbsp; &lt;groupId&gt;org.exparity&lt;/groupId&gt;
+&nbsp; &nbsp; &nbsp; &lt;artifactId&gt;exparity-stub&lt;/artifactId&gt;
+&nbsp; &nbsp; &nbsp; &lt;version&gt;1.1.5&lt;/version&gt;
+&nbsp; &nbsp; &nbsp; &lt;scope&gt;test&lt;/scope&gt;
+&nbsp; &nbsp; &lt;/dependency&gt;
+</pre>
+</body>
+</html>
