@@ -142,6 +142,7 @@ public class UserComment {
 
 	private Long id;
 	private Date timestamp;
+	@Transient
 	private String text;
 	private String title;
 
@@ -313,14 +314,43 @@ public class UserComment {
 	<strong>@GeneratedValue(strategy = GenerationType.SEQUENCE)</strong>
 	private Long id;
 	private Date timestamp;
+	@Transient
 	private String text;
 	private String title;
 	...
 </pre>
-  <p>After running the test again it all passes.
+<p>After running the test again we get another failure. The presence of the @Transient annotation on the UserComment.text property is preventing the value being persisted</p>
+<pre>java.lang.AssertionError: 
+Expected: the same as <org.exparity.hamcrest.bean.sample.dao.User@7c098bb3>
+     but: User.Comments[0].Text is null instead of "mDAWDJXbheIHbbHLR1NNVJqAki49RvaVwQtKD38r79u0y3MTDD"
+	at org.hamcrest.MatcherAssert.assertThat(MatcherAssert.java:20)
+	at org.hamcrest.MatcherAssert.assertThat(MatcherAssert.java:8)
+	at org.exparity.hamcrest.bean.sample.dao.UserDAOHibernateImplTest.canSaveAUser(UserDAOHibernateImplTest.java:19)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:483)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	...
+</pre>
+  <p>Another change to the UserComment object to remove the @Transient annotation and we can run the test again.</p>
+  <pre class="brush:java">
+@Table
+@Entity
+public class UserComment {
+
+	<strong>@Id</strong>
+	<strong>@GeneratedValue(strategy = GenerationType.SEQUENCE)</strong>
+	private Long id;
+	private Date timestamp;
+	private String text;
+	private String title;
+	...
+</pre>
+<p>After running the test again it all passes.
   <p>
   <h2>Try it out</h2>
-  <p>To try hamcrest-bean and exparity-stub out for yourself include the dependency in your maven pom or other dependency manager</p>
+  <p>To try hamcrest-bean and exparity-stub out for yourself include the dependency in your maven pom or other dependency manager.</p>
   <pre class="brush:xml">&nbsp; &nbsp; &lt;dependency&gt;
 &nbsp; &nbsp; &nbsp; &lt;groupId&gt;org.exparity&lt;/groupId&gt;
 &nbsp; &nbsp; &nbsp; &lt;artifactId&gt;hamcrest-bean&lt;/artifactId&gt;
